@@ -77,6 +77,23 @@ def ensure_command(command: str, install_hint: str) -> None:
     raise RuntimeError(f"Required command '{command}' was not found. {install_hint}")
 
 
+def _get_node_major_version() -> int | None:
+    if not shutil.which("node"):
+        return None
+
+    result = subprocess.run(["node", "--version"], capture_output=True, text=True, check=False)
+    version_text = result.stdout.strip() or result.stderr.strip()
+    if result.returncode != 0 or not version_text:
+        return None
+
+    normalized = version_text.lstrip("v")
+    major_text = normalized.split(".", 1)[0]
+    try:
+        return int(major_text)
+    except ValueError:
+        return None
+
+
 def ensure_apt_packages() -> None:
     if not shutil.which("apt-get"):
         return
@@ -204,6 +221,26 @@ def ensure_frontend_dependencies(config: AppConfig) -> bool:
             return True
         log("[WARN] npm was not found and no frontend build exists. The website UI will be skipped.")
         return False
+
+    node_major = _get_node_major_version()
+    if node_major is None:
+        if dist_dir.exists():
+            log("[WARN] Could not determine Node.js version. Using existing frontend build from ai-art-generator-hub/dist.")
+            return True
+        raise RuntimeError("Could not determine Node.js version. Install Node.js 18 or newer to build the frontend.")
+
+    if node_major < 18:
+        if dist_dir.exists():
+            log(
+                f"[WARN] Node.js {node_major} is too old for this frontend build. "
+                "Using existing frontend build from ai-art-generator-hub/dist."
+            )
+            return True
+        raise RuntimeError(
+            f"Node.js {node_major} is too old for this frontend. "
+            "Install Node.js 18 or newer (Node 20 LTS recommended), "
+            "or run ./bootstrap_vm.sh on the target VM."
+        )
 
     node_modules = config.frontend_dir / "node_modules"
     if node_modules.exists():
