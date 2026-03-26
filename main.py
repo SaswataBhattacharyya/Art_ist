@@ -183,10 +183,32 @@ def install_python_dependencies(config: AppConfig) -> None:
     run_command([str(venv_python), "-m", "pip", "install", "-r", str(config.requirements_file)])
 
 
+def install_selected_torch_runtime(config: AppConfig) -> None:
+    torch_index_url = os.environ.get("TORCH_INDEX_URL")
+    torch_packages = os.environ.get("TORCH_PACKAGES", "torch torchvision torchaudio").split()
+    if not torch_index_url or not torch_packages:
+        return
+
+    log(f"[SETUP] Installing PyTorch runtime from {torch_index_url}")
+    run_command(
+        [
+            str(config.venv_python),
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            *torch_packages,
+            "--index-url",
+            torch_index_url,
+        ]
+    )
+
+
 def install_comfyui_requirements(config: AppConfig) -> None:
     if not config.start_comfyui:
         return
 
+    install_selected_torch_runtime(config)
     requirements_file = ensure_comfyui_checkout(config) / "requirements.txt"
     if not requirements_file.exists():
         log(f"[WARN] Skipping ComfyUI requirements install because {requirements_file} does not exist")
@@ -386,17 +408,22 @@ def install_custom_node_requirements(config: AppConfig) -> None:
         ]
     )
     run_command([str(config.venv_python), "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"])
-    run_command(
-        [
-            str(config.venv_python),
-            "-m",
-            "pip",
-            "install",
-            "onnxruntime-gpu",
-            "--extra-index-url",
-            "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/",
-        ]
+    onnxruntime_package = os.environ.get("ONNXRUNTIME_PACKAGE", "onnxruntime-gpu")
+    onnxruntime_extra_index = os.environ.get(
+        "ONNXRUNTIME_EXTRA_INDEX_URL",
+        "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/",
     )
+    install_command = [
+        str(config.venv_python),
+        "-m",
+        "pip",
+        "install",
+        onnxruntime_package,
+    ]
+    if onnxruntime_package == "onnxruntime-gpu" and onnxruntime_extra_index:
+        install_command.extend(["--extra-index-url", onnxruntime_extra_index])
+    log(f"[SETUP] Installing ONNX Runtime package: {onnxruntime_package}")
+    run_command(install_command)
 
 
 def start_website(config: AppConfig) -> subprocess.Popen[str]:
