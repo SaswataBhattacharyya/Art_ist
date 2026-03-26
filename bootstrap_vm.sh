@@ -114,11 +114,29 @@ configure_gpu_runtime() {
   log "[INFO] Selected PyTorch wheel index: ${TORCH_INDEX_URL}"
 }
 
+configure_network_binding() {
+  local primary_ip
+  primary_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  export COMFYUI_HOST="0.0.0.0"
+  export WEBSITE_HOST="0.0.0.0"
+
+  log "[INFO] Binding ComfyUI to ${COMFYUI_HOST}:3008"
+  log "[INFO] Binding website to ${WEBSITE_HOST}:3010"
+  if [[ -n "${primary_ip}" ]]; then
+    log "[INFO] Access ComfyUI at: http://${primary_ip}:3008"
+    log "[INFO] Access website at: http://${primary_ip}:3010"
+  else
+    log "[INFO] Access ComfyUI at: http://<vm-ip>:3008"
+    log "[INFO] Access website at: http://<vm-ip>:3010"
+  fi
+}
+
 main() {
   ensure_base_packages
   ensure_node20
   detect_nvidia
   configure_gpu_runtime
+  configure_network_binding
 
   cd "${ROOT_DIR}"
   exec python main.py
