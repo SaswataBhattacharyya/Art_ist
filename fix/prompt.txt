@@ -1,0 +1,288 @@
+You are editing an existing local project that currently performs a large setup flow for an AI art / ComfyUI website stack.
+
+Your goal is to SIMPLIFY and REWIRE the project.
+
+====================
+HIGH-LEVEL GOAL
+====================
+
+Change the project so that it does ONLY these things:
+
+1. Download/install ONLY the models/assets needed for ComfyUI workflows
+2. Start ComfyUI
+3. Start the website frontend/backend
+
+IMPORTANT:
+- Do NOT download or install any LLM/VLM models
+- Do NOT install or require planner/coder/critic models
+- Do NOT install or require RLM
+- Do NOT build or use RAG
+- Do NOT keep any old website backend logic that depends on local LLMs, VLMs, RAG, or ComfyUI workflow reasoning
+- The website frontend UI should remain visually the same for now
+- The connection between website and ComfyUI should be BROKEN intentionally for now
+- Backend should be simplified so frontend can run independently, even if generation features are stubbed / mocked / disabled
+
+====================
+PROJECT INTENT
+====================
+
+This is now a temporary architecture split:
+
+- Frontend: keep same appearance and same pages/components as much as possible
+- Backend: no old agentic / LAG / RAG / LLM orchestration
+- ComfyUI: start separately as its own service
+- Website: start separately as its own service
+- No live integration between website and ComfyUI for now
+
+The website should still launch successfully even if generation endpoints are non-functional.
+If needed, replace old generation endpoints with placeholder responses like:
+- "ComfyUI integration temporarily disabled"
+- "Backend pipeline not connected yet"
+
+====================
+WHAT TO REMOVE / DISABLE
+====================
+
+Find and remove, disable, or bypass all code paths related to:
+
+- planner model downloads
+- coder model downloads
+- critic model downloads
+- any Hugging Face LLM/VLM setup
+- RLM installation
+- RAG building/indexing
+- sentence-transformers / FAISS setup
+- any startup dependency on LLM availability
+- any backend orchestration that expects local reasoning models
+- any website-to-ComfyUI request flow that currently assumes active integration
+
+Do NOT leave dead startup steps that print fake success messages.
+If a step is removed, remove its log messages too.
+
+====================
+NEW REQUIRED BEHAVIOR
+====================
+
+Refactor the setup/start flow into a much smaller pipeline:
+
+A. Environment / dependency install
+- Keep only what is necessary for:
+  - ComfyUI
+  - website frontend/backend runtime
+  - ComfyUI model download helpers, if used
+- Remove unnecessary Python packages for transformers/RAG/LLM logic unless they are still required elsewhere
+
+B. ComfyUI model downloader
+- Only download models relevant to ComfyUI workflows used by this project
+- Do not download any text LLM or vision-language model
+- Keep downloader modular and configurable
+- Prefer a clear manifest/config file listing model URLs / repos / target directories
+- If some models are already present, skip them
+- Log exactly which models are downloaded, skipped, or failed
+
+C. ComfyUI launcher
+- Start ComfyUI cleanly
+- Expose host/port via config/env
+- Print clear logs
+- Fail honestly if ComfyUI cannot start
+
+D. Website launcher
+- Install frontend dependencies if needed
+- Start frontend/backend
+- Backend should no longer depend on LLM services or ComfyUI connection
+- Any broken generation/API routes should be replaced by safe placeholder endpoints so the app still runs
+
+====================
+FRONTEND REQUIREMENT
+====================
+
+Do NOT redesign the frontend right now.
+
+Keep:
+- existing pages
+- existing layout
+- existing visual styling
+- existing components as much as possible
+
+But:
+- if frontend currently expects backend responses from old AI endpoints, make minimal backend-compatible adjustments so the UI does not crash
+- if needed, show non-breaking placeholder messages in the UI for disabled features
+- do not visually overhaul anything
+
+====================
+BACKEND REQUIREMENT
+====================
+
+Backend should be simplified heavily.
+
+What it should do now:
+- health/status endpoints
+- maybe config endpoints if needed by frontend
+- placeholder generation endpoints returning stub responses
+- startup without LLM, RAG, FAISS, or ComfyUI dependency
+
+What it should NOT do now:
+- prompt planning
+- workflow generation from LLM
+- model reasoning
+- retrieval-augmented generation
+- any automatic ComfyUI graph creation based on language models
+
+If old backend files are large, refactor safely rather than patching randomly.
+Create clear separation:
+- website backend
+- ComfyUI launcher
+- model downloader
+- shared config
+
+====================
+INTEGRATION REQUIREMENT
+====================
+
+For now, website and ComfyUI must be intentionally decoupled.
+
+That means:
+- no websocket bridge
+- no API proxy to ComfyUI
+- no workflow submission from website to ComfyUI
+- no backend retry logic trying to reach ComfyUI
+- no frontend crash if ComfyUI is unavailable
+
+The user wants both processes to be able to run side by side, but not be connected yet.
+
+====================
+CONFIGURATION REQUIREMENT
+====================
+
+Introduce or clean up configuration so these are easy to edit:
+
+- COMFYUI_PATH
+- COMFYUI_HOST
+- COMFYUI_PORT
+- WEBSITE_BACKEND_HOST
+- WEBSITE_BACKEND_PORT
+- WEBSITE_FRONTEND_PORT
+- MODELS_ROOT
+- START_COMFYUI=true/false
+- START_WEBSITE=true/false
+
+Use env vars or a simple config file.
+Avoid hardcoding paths where possible.
+
+====================
+LOGGING REQUIREMENT
+====================
+
+All logs must be truthful.
+
+Do not print:
+- [OK] something installed if it failed
+- success messages after caught exceptions unless explicitly marked partial
+- misleading "will download on first use" unless that is actually implemented
+
+Make logs concise and human-readable.
+
+====================
+OUTPUT REQUIREMENT
+====================
+
+You must modify the codebase directly.
+
+Please do the following in order:
+
+1. Inspect the current startup/setup flow
+2. Identify files responsible for:
+   - full environment setup
+   - model downloading
+   - backend startup
+   - frontend startup
+   - ComfyUI startup
+   - website↔ComfyUI integration
+3. Refactor the code
+4. Remove obsolete steps
+5. Add placeholder backend behavior where needed
+6. Ensure frontend still launches with same UI
+7. Ensure ComfyUI can launch separately
+8. Provide a final summary of:
+   - files changed
+   - what was removed
+   - what was stubbed
+   - what commands now start the system
+
+====================
+CODING STYLE
+====================
+
+- Make minimal but clean changes
+- Prefer deletion over complicated compatibility layers
+- Do not leave half-broken imports
+- Do not leave unused heavyweight dependencies if avoidable
+- Keep functions small and readable
+- Preserve existing project structure where practical
+- Add comments only where useful
+
+====================
+IMPORTANT EDGE CASES
+====================
+
+- If frontend build currently fails because backend assumptions changed, fix the backend contract with placeholder responses instead of redesigning frontend
+- If a route is required by frontend but old logic is gone, keep the route and return stub JSON
+- If startup script currently does too much, split it into clearer steps
+- If model download list includes LLM/VLM models, remove them entirely from the manifest and code
+- If there are scripts like rag_builder.py, rlm installers, Hugging Face large model downloaders, or FAISS initializers, remove them from startup flow
+
+====================
+FINAL DELIVERABLE
+====================
+
+Make the project behave like this:
+
+- setup script installs only required dependencies for ComfyUI + website runtime
+- model download step downloads only ComfyUI-related models
+- start script can launch:
+  - ComfyUI
+  - website
+- website UI remains same
+- website backend no longer depends on old AI stack
+- website and ComfyUI are not connected for now
+
+At the end, give me:
+1. a concise summary of the changes
+2. the exact commands to run
+3. any temporary limitations because integration is intentionally disabled
+
+And if you want a slightly more forceful version for Codex, use this shorter one:
+
+Refactor this project into a temporary split architecture.
+
+Keep only:
+- ComfyUI model downloading
+- ComfyUI startup
+- website startup
+
+Remove or bypass:
+- all LLM/VLM downloads
+- planner/coder/critic models
+- Hugging Face reasoning model setup
+- RLM install
+- RAG build
+- FAISS
+- sentence-transformers
+- any old agentic backend logic
+- any website-to-ComfyUI integration
+
+Requirements:
+- frontend UI must remain visually unchanged for now
+- backend behavior can change completely
+- website must still run even if generation features are stubbed
+- ComfyUI and website should launch independently
+- no live connection between them for now
+- replace old generation endpoints with placeholder JSON responses so frontend does not crash
+- clean logs only, no fake success messages
+
+Please inspect the current codebase, modify files directly, and then report:
+- files changed
+- removed features
+- new startup flow
+- exact run commands
+- temporary limitations
