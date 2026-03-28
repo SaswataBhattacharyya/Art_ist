@@ -12,10 +12,12 @@ import sys
 import time
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote, urlparse
 
 from app_config import AppConfig, load_config
 ROOT = Path(__file__).resolve().parent
 COMFYUI_REPO = "https://github.com/comfyanonymous/ComfyUI.git"
+LINKS_FILE = ROOT / "links.md"
 APT_COMMAND_PACKAGES = {
     "curl": "curl",
     "fuser": "psmisc",
@@ -26,34 +28,18 @@ APT_COMMAND_PACKAGES = {
     "npm": "npm",
     "wget": "wget",
 }
-CUSTOM_NODE_REPOS = [
-    "https://github.com/Fannovel16/comfyui_controlnet_aux.git",
-    "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
-    "https://github.com/Acly/comfyui-inpaint-nodes.git",
-    "https://github.com/Acly/comfyui-tooling-nodes.git",
-    "https://github.com/kijai/ComfyUI-WanVideoWrapper",
-    "https://github.com/kijai/ComfyUI-WanAnimatePreprocess",
-    "https://github.com/stduhpf/ComfyUI-WanMoeKSampler",
-    "https://github.com/pollockjj/ComfyUI-MultiGPU",
-    "https://github.com/evanspearman/ComfyMath",
-    "https://github.com/ltdrdata/was-node-suite-comfyui",
-    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite",
-    "https://github.com/yolain/ComfyUI-Easy-Use",
-    "https://github.com/kijai/ComfyUI-KJNodes",
-    "https://github.com/pythongosssss/ComfyUI-Custom-Scripts",
-    "https://github.com/city96/ComfyUI-GGUF",
-    "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation",
-    "https://github.com/Comfy-Org/ComfyUI-Manager",
-    "https://github.com/kijai/ComfyUI-segment-anything-2.git",
-    "https://github.com/un-seen/comfyui-tensorops.git",
-]
-REQUIREMENTS_NODE_DIRS = [
-    "comfyui_controlnet_aux",
-    "ComfyUI-WanVideoWrapper",
-    "comfyui-tensorops",
-    "ComfyUI-GGUF",
-    "ComfyUI-VideoHelperSuite",
-]
+MODEL_SECTION_DIRS = {
+    "checkpoints": "checkpoints",
+    "diffusion_models": "diffusion_models",
+    "text_encoders": "text_encoders",
+    "vae": "vae",
+    "clip_vision": "clip_vision",
+    "loras": "loras",
+    "latent_upscale_models": "latent_upscale_models",
+    "upscale_models": "upscale_models",
+    "unet": "unet",
+    "other_models": "other_models",
+}
 
 
 def log(message: str) -> None:
@@ -363,12 +349,88 @@ def _repo_dirname(repo_url: str) -> str:
     return name
 
 
+def _iter_active_links() -> Iterable[tuple[str | None, str]]:
+    if not LINKS_FILE.exists():
+        raise RuntimeError(f"Install manifest not found: {LINKS_FILE}")
+
+    current_section: str | None = None
+    for raw_line in LINKS_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("## "):
+            current_section = line[3:].strip().lower()
+            continue
+        if line.startswith("#"):
+            continue
+        yield current_section, line
+
+
+def get_active_model_downloads() -> list[tuple[str, str]]:
+    downloads: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for section, line in _iter_active_links():
+        if section not in MODEL_SECTION_DIRS:
+            continue
+        if not line.startswith("wget "):
+            continue
+        url = line[5:].strip()
+        item = (section, url)
+        if item in seen:
+            continue
+        seen.add(item)
+        downloads.append(item)
+    return downloads
+
+
+def get_active_custom_node_repos() -> list[str]:
+    repos: list[str] = []
+    seen: set[str] = set()
+    for _section, line in _iter_active_links():
+        if not line.startswith("git clone "):
+            continue
+        repo = line[len("git clone ") :].strip()
+        normalized = repo.removesuffix(".git")
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        repos.append(repo)
+    return repos
+
+
+def _download_filename(url: str) -> str:
+    path = urlparse(url).path
+    name = Path(unquote(path)).name
+    if not name:
+        raise RuntimeError(f"Could not determine filename from URL: {url}")
+    return name
+
+
+def install_model_downloads(config: AppConfig) -> None:
+    comfyui_path = ensure_comfyui_checkout(config)
+    models_root = comfyui_path / "models"
+    downloads = get_active_model_downloads()
+    if not downloads:
+        log(f"[WARN] No active model downloads found in {LINKS_FILE}")
+        return
+
+    for section, url in downloads:
+        target_dir = models_root / MODEL_SECTION_DIRS[section]
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file = target_dir / _download_filename(url)
+        if target_file.exists():
+            log(f"[SETUP] Model already present: {target_file.relative_to(comfyui_path)}")
+            continue
+        log(f"[SETUP] Downloading model into {target_dir.relative_to(comfyui_path)}: {target_file.name}")
+        run_command(["wget", "-O", str(target_file), url])
+
+
 def install_custom_nodes(config: AppConfig) -> None:
     ensure_command("git", "Install git to clone ComfyUI custom nodes.")
     custom_nodes_dir = ensure_comfyui_checkout(config) / "custom_nodes"
     custom_nodes_dir.mkdir(parents=True, exist_ok=True)
 
-    for repo in CUSTOM_NODE_REPOS:
+    for repo in get_active_custom_node_repos():
         target_dir = custom_nodes_dir / _repo_dirname(repo)
         if target_dir.exists():
             log(f"[SETUP] Custom node already present: {target_dir.name}")
@@ -379,51 +441,53 @@ def install_custom_nodes(config: AppConfig) -> None:
 
 def install_custom_node_requirements(config: AppConfig) -> None:
     custom_nodes_dir = ensure_comfyui_checkout(config) / "custom_nodes"
-    for node_dir in REQUIREMENTS_NODE_DIRS:
-        requirements_file = custom_nodes_dir / node_dir / "requirements.txt"
+    for repo in get_active_custom_node_repos():
+        node_dir = custom_nodes_dir / _repo_dirname(repo)
+        requirements_file = node_dir / "requirements.txt"
         if not requirements_file.exists():
-            log(f"[WARN] Skipping missing requirements file: {requirements_file}")
             continue
-        log(f"[SETUP] Installing requirements for {node_dir}")
+        log(f"[SETUP] Installing requirements for {node_dir.name}")
         run_command([str(config.venv_python), "-m", "pip", "install", "-r", str(requirements_file)])
 
-    log("[SETUP] Installing ComfyUI-VideoHelperSuite extra packages")
-    run_command(
-        [
+    video_helper_suite_dir = custom_nodes_dir / "ComfyUI-VideoHelperSuite"
+    if video_helper_suite_dir.exists():
+        log("[SETUP] Installing ComfyUI-VideoHelperSuite extra packages")
+        run_command(
+            [
+                str(config.venv_python),
+                "-m",
+                "pip",
+                "install",
+                "aiohttp",
+                "tqdm",
+                "rembg[cpu]",
+                "rembg[gpu]",
+                "accelerate",
+                "gguf",
+                "surrealist",
+                "diffusers",
+                "imageio-ffmpeg",
+                "sageattention",
+                "huggingface_hub",
+            ]
+        )
+        run_command([str(config.venv_python), "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"])
+        onnxruntime_package = os.environ.get("ONNXRUNTIME_PACKAGE", "onnxruntime-gpu")
+        onnxruntime_extra_index = os.environ.get(
+            "ONNXRUNTIME_EXTRA_INDEX_URL",
+            "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/",
+        )
+        install_command = [
             str(config.venv_python),
             "-m",
             "pip",
             "install",
-            "aiohttp",
-            "tqdm",
-            "rembg[cpu]",
-            "rembg[gpu]",
-            "accelerate",
-            "gguf",
-            "surrealist",
-            "diffusers",
-            "imageio-ffmpeg",
-            "sageattention",
-            "huggingface_hub",
+            onnxruntime_package,
         ]
-    )
-    run_command([str(config.venv_python), "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"])
-    onnxruntime_package = os.environ.get("ONNXRUNTIME_PACKAGE", "onnxruntime-gpu")
-    onnxruntime_extra_index = os.environ.get(
-        "ONNXRUNTIME_EXTRA_INDEX_URL",
-        "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/",
-    )
-    install_command = [
-        str(config.venv_python),
-        "-m",
-        "pip",
-        "install",
-        onnxruntime_package,
-    ]
-    if onnxruntime_package == "onnxruntime-gpu" and onnxruntime_extra_index:
-        install_command.extend(["--extra-index-url", onnxruntime_extra_index])
-    log(f"[SETUP] Installing ONNX Runtime package: {onnxruntime_package}")
-    run_command(install_command)
+        if onnxruntime_package == "onnxruntime-gpu" and onnxruntime_extra_index:
+            install_command.extend(["--extra-index-url", onnxruntime_extra_index])
+        log(f"[SETUP] Installing ONNX Runtime package: {onnxruntime_package}")
+        run_command(install_command)
 
 
 def start_website(config: AppConfig) -> subprocess.Popen[str]:
@@ -479,31 +543,13 @@ def main() -> None:
 
     processes: list[subprocess.Popen[str]] = []
     try:
+        if config.start_comfyui:
+            install_model_downloads(config)
+            install_custom_nodes(config)
+            install_custom_node_requirements(config)
         comfyui_process = start_comfyui(config)
         if comfyui_process is not None:
             processes.append(comfyui_process)
-
-        if config.start_comfyui:
-            install_custom_nodes(config)
-            install_custom_node_requirements(config)
-            if comfyui_process is not None:
-                comfyui_path = ensure_comfyui_checkout(config)
-                log("[SETUP] Restarting ComfyUI to load installed custom nodes")
-                comfyui_process = restart_process(
-                    comfyui_process,
-                    "ComfyUI",
-                    [
-                        str(config.venv_python),
-                        str(comfyui_path / "main.py"),
-                        "--listen",
-                        config.comfyui_host,
-                        "--port",
-                        str(config.comfyui_port),
-                    ],
-                    cwd=comfyui_path,
-                    env=config.base_env,
-                )
-                processes[0] = comfyui_process
 
         if config.start_website:
             if frontend_ready:
