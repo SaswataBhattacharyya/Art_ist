@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Send, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import FileUpload from "@/components/FileUpload";
@@ -84,11 +85,24 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-5">
-          <Sparkles className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            AI Generation Studio
-          </h1>
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-6 py-5">
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-6 w-6 text-primary" />
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                Agentic Art Studio
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Prompt builder and asset intake for the local generation stack
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/agent-status"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+          >
+            Agent Status
+          </Link>
         </div>
       </header>
 
@@ -102,7 +116,7 @@ const Index = () => {
             <textarea
               value={textPrompt}
               onChange={(e) => setTextPrompt(e.target.value)}
-              placeholder="Describe what you want to generate..."
+              placeholder="Describe the scene, subject, motion, style, and output you want..."
               rows={4}
               className="w-full resize-none rounded-lg border border-border bg-secondary p-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring glow-border transition-shadow"
             />

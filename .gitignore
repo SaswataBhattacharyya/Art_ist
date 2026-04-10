@@ -3,6 +3,7 @@ __pycache__/
 venv/
 ComfyUI/
 workflows/
+fix/
 kritaai_novita.md
 *.zip
 *.mov

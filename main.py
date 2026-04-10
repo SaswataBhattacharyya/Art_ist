@@ -28,6 +28,13 @@ APT_COMMAND_PACKAGES = {
     "npm": "npm",
     "wget": "wget",
 }
+APT_LIBRARY_PACKAGES = [
+    "libgl1",
+    "libglib2.0-0",
+    "libsm6",
+    "libxext6",
+    "libxrender1",
+]
 MODEL_SECTION_DIRS = {
     "checkpoints": "checkpoints",
     "diffusion_models": "diffusion_models",
@@ -105,6 +112,23 @@ def ensure_apt_packages() -> None:
     log(f"[SETUP] Installing system packages via apt: {', '.join(missing_packages)}")
     run_command(["apt-get", "update"], env=env)
     run_command(["apt-get", "install", "-y", *missing_packages], env=env)
+
+
+def ensure_apt_libraries(packages: list[str]) -> None:
+    if not shutil.which("apt-get") or not packages:
+        return
+
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        raise RuntimeError(
+            "Missing required system libraries: "
+            f"{', '.join(packages)}. Install them with apt or rerun as root."
+        )
+
+    env = os.environ.copy()
+    env["DEBIAN_FRONTEND"] = "noninteractive"
+    log(f"[SETUP] Ensuring system libraries via apt: {', '.join(packages)}")
+    run_command(["apt-get", "update"], env=env)
+    run_command(["apt-get", "install", "-y", *packages], env=env)
 
 
 def ensure_venv(config: AppConfig) -> Path:
@@ -490,6 +514,36 @@ def install_custom_node_requirements(config: AppConfig) -> None:
         run_command(install_command)
 
 
+def ensure_opencv_runtime(config: AppConfig) -> None:
+    ensure_apt_libraries(APT_LIBRARY_PACKAGES)
+
+    log("[SETUP] Normalizing OpenCV runtime for headless ComfyUI")
+    run_command(
+        [
+            str(config.venv_python),
+            "-m",
+            "pip",
+            "uninstall",
+            "-y",
+            "opencv-python",
+            "opencv-contrib-python",
+            "opencv-python-headless",
+        ],
+        check=False,
+    )
+    run_command(
+        [
+            str(config.venv_python),
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "opencv-python-headless",
+        ]
+    )
+    run_command([str(config.venv_python), "-c", "import cv2; print(cv2.__version__)"])
+
+
 def start_website(config: AppConfig) -> subprocess.Popen[str]:
     kill_port(config.website_port)
     env = {
@@ -547,6 +601,7 @@ def main() -> None:
             install_model_downloads(config)
             install_custom_nodes(config)
             install_custom_node_requirements(config)
+            ensure_opencv_runtime(config)
         comfyui_process = start_comfyui(config)
         if comfyui_process is not None:
             processes.append(comfyui_process)

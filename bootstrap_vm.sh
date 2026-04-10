@@ -2,36 +2,88 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if [[ "${EUID}" -ne 0 ]]; then
-  echo "Run this script as root."
-  exit 1
-fi
-
 export DEBIAN_FRONTEND=noninteractive
+APT_PREFIX=()
 
 log() {
   echo "$1"
 }
 
+configure_privilege_mode() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    log "[INFO] Running as root. Using apt-get directly."
+    APT_PREFIX=()
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    log "[INFO] Running without root. Using sudo for apt-get commands."
+    APT_PREFIX=(sudo)
+    return
+  fi
+
+  if [[ -t 0 ]]; then
+    log "[WARN] Script is not running as root and sudo is unavailable."
+    read -r -p "Is this a VM/container where you can rerun this script as root? [Y/n] " reply
+    reply="${reply:-Y}"
+    if [[ "${reply}" =~ ^[Yy]$ ]]; then
+      log "[ERROR] Rerun this script as root in the VM/container."
+    else
+      log "[ERROR] Local installation requires sudo, but sudo is not available."
+    fi
+  else
+    log "[ERROR] Script needs root privileges or sudo for apt-get operations."
+  fi
+  exit 1
+}
+
+apt_get() {
+  "${APT_PREFIX[@]}" apt-get "$@"
+}
+
+as_root() {
+  if [[ "${#APT_PREFIX[@]}" -eq 0 ]]; then
+    "$@"
+  else
+    "${APT_PREFIX[@]}" "$@"
+  fi
+}
+
 ensure_base_packages() {
-  apt-get update
-  apt-get install -y ca-certificates curl git gnupg lsof nano pciutils psmisc wget
+  apt_get update
+  apt_get install -y \
+    ca-certificates \
+    curl \
+    ffmpeg \
+    git \
+    gnupg \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libsamplerate0-dev \
+    libxext6 \
+    libxrender1 \
+    lsof \
+    nano \
+    pciutils \
+    portaudio19-dev \
+    psmisc \
+    wget
 }
 
 ensure_node20() {
-  apt-get remove -y nodejs npm libnode-dev nodejs-doc || true
-  apt-get autoremove -y || true
+  apt_get remove -y nodejs npm libnode-dev nodejs-doc || true
+  apt_get autoremove -y || true
 
-  mkdir -p /etc/apt/keyrings
+  as_root mkdir -p /etc/apt/keyrings
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    | as_root gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
-    > /etc/apt/sources.list.d/nodesource.list
+    | as_root tee /etc/apt/sources.list.d/nodesource.list >/dev/null
 
-  apt-get update
-  apt-get -f install -y
-  apt-get install -y nodejs
+  apt_get update
+  apt_get -f install -y
+  apt_get install -y nodejs
 
   node -v
   npm -v
@@ -132,6 +184,7 @@ configure_network_binding() {
 }
 
 main() {
+  configure_privilege_mode
   ensure_base_packages
   ensure_node20
   detect_nvidia

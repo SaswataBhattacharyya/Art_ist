@@ -1,4 +1,4 @@
-"""Small website backend with placeholder generation endpoints."""
+"""Backend for the local Agentic Art prototype."""
 
 from __future__ import annotations
 
@@ -49,14 +49,14 @@ def _idle_status() -> dict[str, Any]:
     return {
         "job_id": None,
         "state": "DISABLED",
-        "current_task": "ComfyUI integration temporarily disabled",
+        "current_task": "Generation pipeline is in placeholder mode",
         "progress": 0,
         "logs": [
             {
                 "id": "integration-disabled",
                 "timestamp": _timestamp(),
                 "level": "warning",
-                "message": "Backend pipeline is running in placeholder mode. No jobs are sent to ComfyUI yet.",
+                "message": "No jobs are sent to ComfyUI yet. Upload and status endpoints are active.",
             }
         ],
         "completed_tasks": [],
@@ -69,6 +69,7 @@ async def health() -> dict[str, Any]:
         "status": "ok",
         "mode": "placeholder",
         "comfyui_enabled": False,
+        "project": "agentic-art-bare-minimum",
         "website_host": os.environ.get("WEBSITE_HOST", "127.0.0.1"),
         "website_port": os.environ.get("WEBSITE_PORT", "3010"),
     }
@@ -79,7 +80,8 @@ async def status() -> dict[str, Any]:
     return {
         "website": "running",
         "generation": "disabled",
-        "message": "Website is running. ComfyUI is started separately and is not wired into the website yet.",
+        "project": "agentic-art-bare-minimum",
+        "message": "Website is running in placeholder mode. ComfyUI is not wired into generation requests yet.",
     }
 
 
@@ -96,7 +98,7 @@ async def generate(request: Request) -> dict[str, Any]:
 
     return {
         "status": "disabled",
-        "message": "ComfyUI integration temporarily disabled",
+        "message": "Generation is disabled in this prototype build",
         "received_metadata": parsed_metadata,
     }
 
@@ -106,7 +108,7 @@ async def create_job(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "job_id": str(uuid.uuid4()),
         "status": "disabled",
-        "message": "Job creation is stubbed until website-to-ComfyUI integration is restored.",
+        "message": "Job creation is stubbed until the website-to-ComfyUI bridge is restored.",
         "received": payload,
     }
 
